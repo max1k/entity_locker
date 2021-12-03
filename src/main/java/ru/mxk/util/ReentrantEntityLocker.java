@@ -7,7 +7,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
-public class BaseEntityLocker<T> implements EntityLocker<T> {
+public class ReentrantEntityLocker<T> implements EntityLocker<T> {
     private final Map<T, Lock> lockByID = new ConcurrentHashMap<>();
 
     @Override
@@ -33,7 +33,10 @@ public class BaseEntityLocker<T> implements EntityLocker<T> {
     }
 
     private void runAndUnlock(Runnable runnable, Lock lock) {
-        runnable.run();
-        lock.unlock();
+        try {
+            runnable.run();
+        } finally {
+            lock.unlock();
+        }
     }
 }

@@ -16,7 +16,7 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
-class BaseEntityLockerTest {
+class ReentrantEntityLockerTest {
     private static final int THREAD_LIMIT = 1000;
     private static final int FIRST_ENTITY_ID = 1;
     private static final int SECOND_ENTITY_ID = 42;
@@ -27,7 +27,7 @@ class BaseEntityLockerTest {
     public void testAtMostOneExecutionOnSameEntity() throws InterruptedException {
         CountDownLatch latch = new CountDownLatch(1);
         List<Integer> mutualList = new ArrayList<>(THREAD_LIMIT);
-        EntityLocker<Integer> entityLocker = new BaseEntityLocker<>();
+        EntityLocker<Integer> entityLocker = new ReentrantEntityLocker<>();
 
         Runnable threadRunnable = () -> {
             try {
@@ -58,7 +58,7 @@ class BaseEntityLockerTest {
         CountDownLatch latch = new CountDownLatch(1);
         List<Integer> firstMutualList = new ArrayList<>(THREAD_LIMIT);
         List<Integer> secondMutualList = new ArrayList<>(THREAD_LIMIT);
-        EntityLocker<Integer> entityLocker = new BaseEntityLocker<>();
+        EntityLocker<Integer> entityLocker = new ReentrantEntityLocker<>();
 
         Runnable threadRunnable = () -> {
             try {
@@ -94,7 +94,7 @@ class BaseEntityLockerTest {
     public void testConcurrentExecutionOnDifferentEntities() throws InterruptedException {
         CountDownLatch latch = new CountDownLatch(1);
         AtomicInteger counter = new AtomicInteger(0);
-        EntityLocker<UUID> entityLocker = new BaseEntityLocker<>();
+        EntityLocker<UUID> entityLocker = new ReentrantEntityLocker<>();
 
         Runnable threadRunnable = () -> {
             try {
@@ -139,7 +139,7 @@ class BaseEntityLockerTest {
         CountDownLatch latch = new CountDownLatch(1);
         AtomicInteger counter = new AtomicInteger(0);
         List<Boolean> protectedCodeExecutions = new CopyOnWriteArrayList<>();
-        EntityLocker<Integer> entityLocker = new BaseEntityLocker<>();
+        EntityLocker<Integer> entityLocker = new ReentrantEntityLocker<>();
 
         Runnable threadRunnable = () -> {
             try {
@@ -192,7 +192,7 @@ class BaseEntityLockerTest {
         CountDownLatch latch = new CountDownLatch(1);
         AtomicInteger counter = new AtomicInteger(0);
         List<Boolean> protectedCodeExecutions = new CopyOnWriteArrayList<>();
-        EntityLocker<Integer> entityLocker = new BaseEntityLocker<>();
+        EntityLocker<Integer> entityLocker = new ReentrantEntityLocker<>();
 
         Runnable threadRunnable = () -> {
             try {
@@ -242,7 +242,7 @@ class BaseEntityLockerTest {
 
 //    @Test
     public void testDeadLock() throws InterruptedException {
-        EntityLocker<Integer> entityLocker = new BaseEntityLocker<>();
+        EntityLocker<Integer> entityLocker = new ReentrantEntityLocker<>();
         List<Integer> firstList = new ArrayList<>(THREAD_LIMIT);
         List<Integer> secondList = new ArrayList<>(THREAD_LIMIT);
         CountDownLatch latch = new CountDownLatch(1);

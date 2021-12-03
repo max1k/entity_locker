@@ -32,5 +32,5 @@ public interface EntityLocker<T> {
      * @param runnable code to run when lock is taken.
      * @param timeout the time to wait for the lock
      */
-    boolean tryLockAndRun(T entityId, Runnable runnable, Duration timeout) throws InterruptedException;
+    boolean lockAndRun(T entityId, Runnable runnable, Duration timeout) throws InterruptedException;
 }

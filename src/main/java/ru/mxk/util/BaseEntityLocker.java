@@ -18,7 +18,7 @@ public class BaseEntityLocker<T> implements EntityLocker<T> {
     }
 
     @Override
-    public boolean tryLockAndRun(T entityId, Runnable runnable, Duration duration) throws InterruptedException {
+    public boolean lockAndRun(T entityId, Runnable runnable, Duration duration) throws InterruptedException {
         final Lock lock = getLock(entityId);
         if (lock.tryLock(duration.toNanos(), TimeUnit.NANOSECONDS)) {
             runAndUnlock(runnable, lock);

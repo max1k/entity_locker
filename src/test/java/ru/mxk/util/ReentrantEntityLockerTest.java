@@ -240,6 +240,36 @@ class ReentrantEntityLockerTest {
         Assertions.assertEquals(2, executionsCount.get(true));
     }
 
+    @Test
+    public void testAtMostOneExecutionOnGlobalLock() throws InterruptedException {
+        CountDownLatch latch = new CountDownLatch(1);
+        List<Integer> mutualList = new ArrayList<>(THREAD_LIMIT);
+
+
+        Runnable threadRunnable = () -> {
+            try {
+                latch.await();
+                EntityLocker.lockGlobalAndRun(() -> mutualList.add(mutualList.size() + 1));
+            } catch (InterruptedException e) {
+                Assertions.fail(e);
+            }
+        };
+
+        List<Thread> threads = Stream.generate(() -> new Thread(threadRunnable))
+                                     .limit(THREAD_LIMIT)
+                                     .peek(Thread::start)
+                                     .collect(Collectors.toList());
+
+        //Starting lockAndRun execution at the same time
+        latch.countDown();
+
+        for (Thread thread : threads) {
+            thread.join();
+        }
+
+        Assertions.assertEquals(EXPECTED_LIST, mutualList);
+    }
+
 //    @Test
     public void testDeadLock() throws InterruptedException {
         EntityLocker<Integer> entityLocker = new ReentrantEntityLocker<>();

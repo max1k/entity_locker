@@ -13,3 +13,15 @@ Requirements:
 3. For any given entity, EntityLocker should guarantee that at most one thread executes protected code on that entity. If there’s a concurrent request to lock the same entity, the other thread should wait until the entity becomes available.
 
 4. EntityLocker should allow concurrent execution of protected code on different entities.
+
+Bonus requirements (optional):
+
+I. Allow reentrant locking.
+
+II. Allow the caller to specify timeout for locking an entity.
+
+~~III. Implement protection from deadlocks (but not taking into account possible locks outside EntityLocker).~~
+
+IV. Implement global lock. Protected code that executes under a global lock must not execute concurrently with any other protected code.
+
+~~V. Implement lock escalation. If a single thread has locked too many entities, escalate its lock to be a global lock.~~

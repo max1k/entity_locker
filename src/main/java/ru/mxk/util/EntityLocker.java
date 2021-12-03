@@ -12,6 +12,9 @@ import java.time.Duration;
  * @param <T>
  */
 public interface EntityLocker<T> {
+    Object GLOBAL_LOCK_OBJECT = new Object();
+    EntityLocker<Object> GLOBAL_LOCK = new ReentrantEntityLocker<>();
+
     /**
      * Executing runnable if lock by provided entityId is not held.
      * If provided entityId is already locked by another thread
@@ -33,4 +36,15 @@ public interface EntityLocker<T> {
      * @param timeout the time to wait for the lock
      */
     boolean lockAndRun(T entityId, Runnable runnable, Duration timeout) throws InterruptedException;
+
+    /**
+     * Executing runnable if global lock is not held.
+     * If global lock is held by another thread
+     * then the current thread becomes disabled until the global lock has been unlocked.
+     *
+     * @param runnable code to run when global lock is taken.
+     */
+    static void lockGlobalAndRun(Runnable runnable) {
+        GLOBAL_LOCK.lockAndRun(GLOBAL_LOCK_OBJECT, runnable);
+    }
 }

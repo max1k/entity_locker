@@ -1,6 +1,9 @@
 package ru.mxk.util;
 
+import com.sun.istack.internal.Nullable;
+
 import java.time.Duration;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -18,68 +21,89 @@ public class ReentrantEntityLocker<T> implements EntityLocker<T> {
      * Count of clear locks should be a power of two
      */
     private static final int CLEAR_LOCKS_SIZE = 16;
+
     /**
-     * Waiting for a clear lock timeout
+     * Waiting for a cleanup lock timeout
      */
     private static final long CLEAR_WAIT_TIMEOUT_MS = 50;
+
+    /**
+     * Entity and support locks
+     */
     private final Map<T, ReentrantLock> lockByEntityID = new ConcurrentHashMap<>();
-    private final List<ReadWriteLock> clearLocks = Stream.generate(ReentrantReadWriteLock::new)
-                                                         .limit(CLEAR_LOCKS_SIZE)
-                                                         .collect(Collectors.toList());
+    private final Map<Thread, LinkedList<T>> lockedEntitiesByThread = new ConcurrentHashMap<>();
+    private final List<ReadWriteLock> cleanUpLocks = Stream.generate(ReentrantReadWriteLock::new)
+                                                           .limit(CLEAR_LOCKS_SIZE)
+                                                           .collect(Collectors.toList());
 
     @Override
     public void lockAndRun(T entityId, Runnable runnable) {
         ReentrantLock entityLock = null;
-        final Lock clearReadLock = getClearLock(entityId).readLock();
+        final Lock cleanUpReadLock = getCleanUpLock(entityId).readLock();
         try {
-            clearReadLock.lock();
-            entityLock = getLock(entityId);
+            cleanUpReadLock.lock();
+            entityLock = getEntityLock(entityId);
             entityLock.lock();
 
             runnable.run();
         } finally {
             Optional.ofNullable(entityLock).ifPresent(Lock::unlock);
-            clearReadLock.unlock();
-        }
 
-        clearEntityMap(entityId, entityLock);
+            cleanUpReadLock.unlock();
+            cleanUp(entityId, entityLock);
+        }
     }
 
     @Override
     public boolean lockAndRun(T entityId, Runnable runnable, Duration duration) throws InterruptedException {
         ReentrantLock entityLock = null;
-        boolean result = false;
-        final Lock clearReadLock = getClearLock(entityId).readLock();
+        boolean locked = false;
+        final Lock cleanUpReadLock = getCleanUpLock(entityId).readLock();
 
         try {
-            clearReadLock.lock();
-            entityLock = getLock(entityId);
+            cleanUpReadLock.lock();
+            entityLock = getEntityLock(entityId);
             if (entityLock.tryLock(duration.toNanos(), TimeUnit.NANOSECONDS)) {
-                result = true;
+                locked = true;
                 runnable.run();
             }
 
         } finally {
-            if (result) {
+            if (locked) {
                 entityLock.unlock();
             }
-            clearReadLock.unlock();
+
+            cleanUpReadLock.unlock();
+            cleanUp(entityId, entityLock);
         }
 
-        clearEntityMap(entityId, entityLock);
-        return result;
+        return locked;
     }
 
-    private ReentrantLock getLock(T entityId) {
+    private ReentrantLock getEntityLock(T entityId) {
+        LinkedList<T> ts = lockedEntitiesByThread.computeIfAbsent(Thread.currentThread(), thread -> new LinkedList<>());
+        ts.addLast(entityId);
+
+        if (ts.size() > 1 && ts.get(ts.size() - 2) != entityId) {
+            throw new DeadLockPreventException("Trying to take nested non-reentrant lock: " + ts, ts);
+        }
+
         return lockByEntityID.computeIfAbsent(entityId, t -> new ReentrantLock());
     }
 
-    private void clearEntityMap(T entityId, ReentrantLock entityLock) {
-        if (entityLock.getQueueLength() > 0) {
+    private ReadWriteLock getCleanUpLock(T entityId) {
+        final int lockIndex = entityId.hashCode() & (CLEAR_LOCKS_SIZE - 1);
+        return cleanUpLocks.get(lockIndex);
+    }
+
+    private void cleanUp(T entityId, @Nullable ReentrantLock entityLock) {
+        cleanUpThreadEntities(entityId);
+
+        if (entityLock == null || entityLock.getQueueLength() > 0) {
             return;
         }
 
-        final Lock writeLock = getClearLock(entityId).writeLock();
+        final Lock writeLock = getCleanUpLock(entityId).writeLock();
         boolean hasLock = false;
 
         try {
@@ -96,8 +120,12 @@ public class ReentrantEntityLocker<T> implements EntityLocker<T> {
         }
     }
 
-    private ReadWriteLock getClearLock(T entityId) {
-        final int lockIndex = entityId.hashCode() & (CLEAR_LOCKS_SIZE - 1);
-        return clearLocks.get(lockIndex);
+    private void cleanUpThreadEntities(T entityId) {
+        LinkedList<T> threadLockedEntities = lockedEntitiesByThread.get(Thread.currentThread());
+        threadLockedEntities.removeLastOccurrence(entityId);
+
+        if (threadLockedEntities.isEmpty()) {
+            lockedEntitiesByThread.remove(Thread.currentThread());
+        }
     }
 }

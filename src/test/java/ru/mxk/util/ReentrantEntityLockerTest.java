@@ -215,7 +215,6 @@ class ReentrantEntityLockerTest {
             }
         };
 
-        //Starting lockAndRun execution at the same time
         latch.countDown();
 
         List<Thread> threads = Stream.generate(() -> new Thread(threadRunnable))
@@ -223,7 +222,6 @@ class ReentrantEntityLockerTest {
                                      .peek(Thread::start)
                                      .collect(Collectors.toList());
 
-        //Starting lockAndRun execution at the same time
         latch.countDown();
 
         for (Thread thread : threads) {
@@ -260,7 +258,7 @@ class ReentrantEntityLockerTest {
                                      .peek(Thread::start)
                                      .collect(Collectors.toList());
 
-        //Starting lockAndRun execution at the same time
+        //Starting execution at the same time
         latch.countDown();
 
         for (Thread thread : threads) {
@@ -270,20 +268,19 @@ class ReentrantEntityLockerTest {
         Assertions.assertEquals(EXPECTED_LIST, mutualList);
     }
 
-//    @Test
+    @Test
     public void testDeadLock() throws InterruptedException {
         EntityLocker<Integer> entityLocker = new ReentrantEntityLocker<>();
-        List<Integer> firstList = new ArrayList<>(THREAD_LIMIT);
-        List<Integer> secondList = new ArrayList<>(THREAD_LIMIT);
+        AtomicInteger counter = new AtomicInteger(0);
         CountDownLatch latch = new CountDownLatch(1);
 
         Runnable firstRunnable = () -> {
             try {
                 latch.await();
-                entityLocker.lockAndRun(
+                Assertions.assertThrows(DeadLockPreventException.class, () -> entityLocker.lockAndRun(
                         FIRST_ENTITY_ID,
-                        () -> entityLocker.lockAndRun(SECOND_ENTITY_ID, () -> firstList.add(FIRST_ENTITY_ID))
-                );
+                        () -> entityLocker.lockAndRun(SECOND_ENTITY_ID, counter::incrementAndGet)
+                ));
             } catch (InterruptedException e) {
                 Assertions.fail(e);
             }
@@ -293,10 +290,10 @@ class ReentrantEntityLockerTest {
         Runnable secondRunnable = () -> {
             try {
                 latch.await();
-                entityLocker.lockAndRun(
+                Assertions.assertThrows(DeadLockPreventException.class, () -> entityLocker.lockAndRun(
                         SECOND_ENTITY_ID,
-                        () -> entityLocker.lockAndRun(FIRST_ENTITY_ID, () -> secondList.add(SECOND_ENTITY_ID))
-                );
+                        () -> entityLocker.lockAndRun(FIRST_ENTITY_ID, counter::incrementAndGet)
+                ));
             } catch (InterruptedException e) {
                 Assertions.fail(e);
             }
@@ -314,8 +311,6 @@ class ReentrantEntityLockerTest {
         for (Thread thread : threads) {
             thread.join();
         }
-
-        Assertions.assertEquals(firstList, secondList);
     }
 
 }

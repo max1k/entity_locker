@@ -1,6 +1,5 @@
 package ru.mxk.util;
 
-import com.sun.istack.internal.Nullable;
 
 import java.time.Duration;
 import java.util.LinkedList;
@@ -96,7 +95,7 @@ public class ReentrantEntityLocker<T> implements EntityLocker<T> {
         return cleanUpLocks.get(lockIndex);
     }
 
-    private void cleanUp(T entityId, @Nullable ReentrantLock entityLock) {
+    private void cleanUp(T entityId, ReentrantLock entityLock) {
         cleanUpThreadEntities(entityId);
 
         if (entityLock == null || entityLock.getQueueLength() > 0) {

@@ -22,11 +22,6 @@ public class ReentrantEntityLocker<T> implements EntityLocker<T> {
     private static final int CLEAR_LOCKS_SIZE = 16;
 
     /**
-     * Waiting for a cleanup lock timeout
-     */
-    private static final long CLEAR_WAIT_TIMEOUT_MS = 50;
-
-    /**
      * Entity and support locks
      */
     private final Map<T, ReentrantLock> lockByEntityID = new ConcurrentHashMap<>();
@@ -96,35 +91,37 @@ public class ReentrantEntityLocker<T> implements EntityLocker<T> {
     }
 
     private void cleanUp(T entityId, ReentrantLock entityLock) {
-        cleanUpThreadEntities(entityId);
+        final boolean reentrantMode = cleanUpThreadEntities(entityId);
 
-        if (entityLock == null || entityLock.getQueueLength() > 0) {
+        if (entityLock == null || entityLock.getQueueLength() > 0 || reentrantMode) {
             return;
         }
 
         final Lock writeLock = getCleanUpLock(entityId).writeLock();
-        boolean hasLock = false;
 
         try {
-            if (writeLock.tryLock(CLEAR_WAIT_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
-                hasLock = true;
-                lockByEntityID.remove(entityId);
-            }
-        } catch (InterruptedException e) {
-            throw new IllegalMonitorStateException();
+            writeLock.lock();
+            lockByEntityID.remove(entityId);
         } finally {
-            if (hasLock) {
-                writeLock.unlock();
-            }
+            writeLock.unlock();
         }
     }
 
-    private void cleanUpThreadEntities(T entityId) {
+    /**
+     *
+     * @param entityId entityId for cleanUp thread sequence
+     * @return true if entity locker instance is in reentrant mode
+     */
+
+    private boolean cleanUpThreadEntities(T entityId) {
         LinkedList<T> threadLockedEntities = lockedEntitiesByThread.get(Thread.currentThread());
         threadLockedEntities.removeLastOccurrence(entityId);
 
         if (threadLockedEntities.isEmpty()) {
             lockedEntitiesByThread.remove(Thread.currentThread());
+            return false;
         }
+
+        return true;
     }
 }

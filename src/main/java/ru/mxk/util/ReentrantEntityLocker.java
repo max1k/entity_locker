@@ -34,11 +34,11 @@ public class ReentrantEntityLocker<T> implements EntityLocker<T> {
     public void lockAndRun(T entityId, Runnable runnable) {
         ReentrantLock entityLock = null;
         final Lock cleanUpReadLock = getCleanUpLock(entityId).readLock();
+
         try {
             cleanUpReadLock.lock();
             entityLock = getEntityLock(entityId);
             entityLock.lock();
-
             runnable.run();
         } finally {
             Optional.ofNullable(entityLock).ifPresent(Lock::unlock);
@@ -61,7 +61,6 @@ public class ReentrantEntityLocker<T> implements EntityLocker<T> {
                 locked = true;
                 runnable.run();
             }
-
         } finally {
             if (locked) {
                 entityLock.unlock();
@@ -92,13 +91,13 @@ public class ReentrantEntityLocker<T> implements EntityLocker<T> {
 
     private void cleanUp(T entityId, ReentrantLock entityLock) {
         final boolean reentrantMode = cleanUpThreadEntities(entityId);
+        final boolean hasWaiters = entityLock != null && entityLock.getQueueLength() > 0;
 
-        if (entityLock == null || entityLock.getQueueLength() > 0 || reentrantMode) {
+        if (hasWaiters || reentrantMode) {
             return;
         }
 
         final Lock writeLock = getCleanUpLock(entityId).writeLock();
-
         try {
             writeLock.lock();
             lockByEntityID.remove(entityId);
@@ -108,11 +107,9 @@ public class ReentrantEntityLocker<T> implements EntityLocker<T> {
     }
 
     /**
-     *
      * @param entityId entityId for cleanUp thread sequence
-     * @return true if entity locker instance is in reentrant mode
+     * @return true if entity locker is in reentrant mode
      */
-
     private boolean cleanUpThreadEntities(T entityId) {
         LinkedList<T> threadLockedEntities = lockedEntitiesByThread.get(Thread.currentThread());
         threadLockedEntities.removeLastOccurrence(entityId);

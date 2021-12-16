@@ -23,5 +23,3 @@ II. Allow the caller to specify timeout for locking an entity.
 III. Implement protection from deadlocks (but not taking into account possible locks outside EntityLocker).
 
 IV. Implement global lock. Protected code that executes under a global lock must not execute concurrently with any other protected code.
-
-~~V. Implement lock escalation. If a single thread has locked too many entities, escalate its lock to be a global lock.~~

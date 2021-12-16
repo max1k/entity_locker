@@ -2,10 +2,10 @@ package ru.mxk.util;
 
 
 import java.time.Duration;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
+import java.util.Objects;
+import java.util.Stack;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
@@ -25,7 +25,7 @@ public class ReentrantEntityLocker<T> implements EntityLocker<T> {
      * Entity and support locks
      */
     private final Map<T, ReentrantLock> lockByEntityID = new ConcurrentHashMap<>();
-    private final Map<Thread, LinkedList<T>> lockedEntitiesByThread = new ConcurrentHashMap<>();
+    private final Map<Thread, Stack<T>> lockedEntitiesByThread = new ConcurrentHashMap<>();
     private final List<ReadWriteLock> cleanUpLocks = Stream.generate(ReentrantReadWriteLock::new)
                                                            .limit(CLEAR_LOCKS_SIZE)
                                                            .collect(Collectors.toList());
@@ -39,9 +39,12 @@ public class ReentrantEntityLocker<T> implements EntityLocker<T> {
             cleanUpReadLock.lock();
             entityLock = getEntityLock(entityId);
             entityLock.lock();
+
             runnable.run();
         } finally {
-            Optional.ofNullable(entityLock).ifPresent(Lock::unlock);
+            if (entityLock != null) {
+                entityLock.unlock();
+            }
 
             cleanUpReadLock.unlock();
             cleanUp(entityId, entityLock);
@@ -57,6 +60,7 @@ public class ReentrantEntityLocker<T> implements EntityLocker<T> {
         try {
             cleanUpReadLock.lock();
             entityLock = getEntityLock(entityId);
+
             if (entityLock.tryLock(duration.toNanos(), TimeUnit.NANOSECONDS)) {
                 locked = true;
                 runnable.run();
@@ -74,11 +78,15 @@ public class ReentrantEntityLocker<T> implements EntityLocker<T> {
     }
 
     private ReentrantLock getEntityLock(T entityId) {
-        LinkedList<T> ts = lockedEntitiesByThread.computeIfAbsent(Thread.currentThread(), thread -> new LinkedList<>());
-        ts.addLast(entityId);
+        Stack<T> threadEntityStack = lockedEntitiesByThread.computeIfAbsent(Thread.currentThread(), thread -> new Stack<>());
 
-        if (ts.size() > 1 && ts.get(ts.size() - 2) != entityId) {
-            throw new DeadLockPreventException("Trying to take nested non-reentrant lock: " + ts, ts);
+        boolean threadEntityStackIsNotEmpty = !threadEntityStack.isEmpty();
+        T previousEntityId = threadEntityStackIsNotEmpty ? threadEntityStack.peek() : null;
+
+        threadEntityStack.push(entityId);
+
+        if (threadEntityStackIsNotEmpty && !Objects.equals(previousEntityId, entityId)) {
+            throw new DeadLockPreventException("Trying to take nested non-reentrant lock: " + threadEntityStack, threadEntityStack);
         }
 
         return lockByEntityID.computeIfAbsent(entityId, t -> new ReentrantLock());
@@ -90,7 +98,7 @@ public class ReentrantEntityLocker<T> implements EntityLocker<T> {
     }
 
     private void cleanUp(T entityId, ReentrantLock entityLock) {
-        final boolean reentrantMode = cleanUpThreadEntities(entityId);
+        final boolean reentrantMode = cleanUpThreadEntities();
         final boolean hasWaiters = entityLock != null && entityLock.getQueueLength() > 0;
 
         if (hasWaiters || reentrantMode) {
@@ -107,14 +115,13 @@ public class ReentrantEntityLocker<T> implements EntityLocker<T> {
     }
 
     /**
-     * @param entityId entityId for cleanUp thread sequence
      * @return true if entity locker is in reentrant mode
      */
-    private boolean cleanUpThreadEntities(T entityId) {
-        LinkedList<T> threadLockedEntities = lockedEntitiesByThread.get(Thread.currentThread());
-        threadLockedEntities.removeLastOccurrence(entityId);
+    private boolean cleanUpThreadEntities() {
+        Stack<T> threadEntityStack = lockedEntitiesByThread.get(Thread.currentThread());
+        threadEntityStack.pop();
 
-        if (threadLockedEntities.isEmpty()) {
+        if (threadEntityStack.isEmpty()) {
             lockedEntitiesByThread.remove(Thread.currentThread());
             return false;
         }

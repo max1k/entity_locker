@@ -1,6 +1,8 @@
 package ru.mxk.util;
 
 
+import com.sun.istack.internal.NotNull;
+
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -19,7 +21,7 @@ public class ReentrantEntityLocker<T> implements EntityLocker<T> {
     /**
      * Count of locks for cleanup. Should be a power of two.
      */
-    private static final int CLEANUP_LOCKS_SIZE = 16;
+    private static final int CLEANUP_LOCKS_SIZE = 32;
 
     /**
      * Entity and support locks
@@ -31,7 +33,7 @@ public class ReentrantEntityLocker<T> implements EntityLocker<T> {
                                                            .collect(Collectors.toList());
 
     @Override
-    public void lockAndRun(T entityId, Runnable runnable) {
+    public void lockAndRun(@NotNull T entityId, @NotNull Runnable runnable) {
         ReentrantLock entityLock = null;
         final Lock cleanUpReadLock = getCleanUpLock(entityId).readLock();
 
@@ -52,7 +54,9 @@ public class ReentrantEntityLocker<T> implements EntityLocker<T> {
     }
 
     @Override
-    public boolean lockAndRun(T entityId, Runnable runnable, Duration duration) throws InterruptedException {
+    public boolean lockAndRun(@NotNull T entityId, @NotNull Runnable runnable, @NotNull Duration duration)
+            throws InterruptedException {
+
         ReentrantLock entityLock = null;
         boolean locked = false;
         final Lock cleanUpReadLock = getCleanUpLock(entityId).readLock();
@@ -80,19 +84,6 @@ public class ReentrantEntityLocker<T> implements EntityLocker<T> {
     private ReentrantLock getEntityLock(T entityId) {
         pushEntityToThreadStack(entityId);
         return lockByEntityID.computeIfAbsent(entityId, t -> new ReentrantLock());
-    }
-
-    private void pushEntityToThreadStack(T entityId) {
-        Stack<T> threadEntityStack = lockedEntitiesByThread.computeIfAbsent(Thread.currentThread(), thread -> new Stack<>());
-
-        boolean threadEntityStackIsNotEmpty = !threadEntityStack.isEmpty();
-        T previousEntityId = threadEntityStackIsNotEmpty ? threadEntityStack.peek() : null;
-
-        threadEntityStack.push(entityId);
-
-        if (threadEntityStackIsNotEmpty && !Objects.equals(previousEntityId, entityId)) {
-            throw new DeadLockPreventException("Trying to take nested non-reentrant lock: " + threadEntityStack, threadEntityStack);
-        }
     }
 
     private ReadWriteLock getCleanUpLock(T entityId) {
@@ -128,4 +119,18 @@ public class ReentrantEntityLocker<T> implements EntityLocker<T> {
 
         return true;
     }
+
+    private void pushEntityToThreadStack(T entityId) {
+        Stack<T> threadEntityStack = lockedEntitiesByThread.computeIfAbsent(Thread.currentThread(), thread -> new Stack<>());
+
+        boolean threadEntityStackIsNotEmpty = !threadEntityStack.isEmpty();
+        T previousEntityId = threadEntityStackIsNotEmpty ? threadEntityStack.peek() : null;
+
+        threadEntityStack.push(entityId);
+
+        if (threadEntityStackIsNotEmpty && !Objects.equals(previousEntityId, entityId)) {
+            throw new DeadLockPreventException("Trying to take nested non-reentrant lock: " + threadEntityStack, threadEntityStack);
+        }
+    }
+
 }

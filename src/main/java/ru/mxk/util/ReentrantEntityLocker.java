@@ -17,9 +17,9 @@ import java.util.stream.Stream;
 
 public class ReentrantEntityLocker<T> implements EntityLocker<T> {
     /**
-     * Count of clear locks should be a power of two
+     * Count of locks for cleanup. Should be a power of two.
      */
-    private static final int CLEAR_LOCKS_SIZE = 16;
+    private static final int CLEANUP_LOCKS_SIZE = 16;
 
     /**
      * Entity and support locks
@@ -27,7 +27,7 @@ public class ReentrantEntityLocker<T> implements EntityLocker<T> {
     private final Map<T, ReentrantLock> lockByEntityID = new ConcurrentHashMap<>();
     private final Map<Thread, Stack<T>> lockedEntitiesByThread = new ConcurrentHashMap<>();
     private final List<ReadWriteLock> cleanUpLocks = Stream.generate(ReentrantReadWriteLock::new)
-                                                           .limit(CLEAR_LOCKS_SIZE)
+                                                           .limit(CLEANUP_LOCKS_SIZE)
                                                            .collect(Collectors.toList());
 
     @Override
@@ -93,7 +93,7 @@ public class ReentrantEntityLocker<T> implements EntityLocker<T> {
     }
 
     private ReadWriteLock getCleanUpLock(T entityId) {
-        final int lockIndex = entityId.hashCode() & (CLEAR_LOCKS_SIZE - 1);
+        final int lockIndex = entityId.hashCode() & (CLEANUP_LOCKS_SIZE - 1);
         return cleanUpLocks.get(lockIndex);
     }
 
@@ -105,12 +105,12 @@ public class ReentrantEntityLocker<T> implements EntityLocker<T> {
             return;
         }
 
-        final Lock writeLock = getCleanUpLock(entityId).writeLock();
+        final Lock cleanUpWriteLock = getCleanUpLock(entityId).writeLock();
         try {
-            writeLock.lock();
+            cleanUpWriteLock.lock();
             lockByEntityID.remove(entityId);
         } finally {
-            writeLock.unlock();
+            cleanUpWriteLock.unlock();
         }
     }
 

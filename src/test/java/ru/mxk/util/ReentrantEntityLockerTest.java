@@ -21,7 +21,17 @@ class ReentrantEntityLockerTest {
     private static final int FIRST_ENTITY_ID = 1;
     private static final int SECOND_ENTITY_ID = 42;
     private static final int DEFAULT_SLEEP_TIME_MS = 500;
-    private static final List<Integer> EXPECTED_LIST = IntStream.range(1, THREAD_LIMIT + 1).boxed().collect(Collectors.toList());
+    private static final List<Integer> EXPECTED_LIST = IntStream.range(1, THREAD_LIMIT + 1)
+                                                                .boxed()
+                                                                .collect(Collectors.toList());
+
+
+    private static List<Thread> createThreads(Runnable threadRunnable) {
+        return Stream.generate(() -> new Thread(threadRunnable))
+                .limit(THREAD_LIMIT)
+                .peek(Thread::start)
+                .collect(Collectors.toList());
+    }
 
     @Test
     public void testAtMostOneExecutionOnSameEntity() throws InterruptedException {
@@ -38,12 +48,8 @@ class ReentrantEntityLockerTest {
             }
         };
 
-        List<Thread> threads = Stream.generate(() -> new Thread(threadRunnable))
-                                     .limit(THREAD_LIMIT)
-                                     .peek(Thread::start)
-                                     .collect(Collectors.toList());
+        List<Thread> threads = createThreads(threadRunnable);
 
-        //Starting lockAndRun execution at the same time
         latch.countDown();
 
         for (Thread thread : threads) {
@@ -74,12 +80,8 @@ class ReentrantEntityLockerTest {
             }
         };
 
-        List<Thread> threads = Stream.generate(() -> new Thread(threadRunnable))
-                                     .limit(THREAD_LIMIT)
-                                     .peek(Thread::start)
-                                     .collect(Collectors.toList());
+        List<Thread> threads = createThreads(threadRunnable);
 
-        //Starting lockAndRun execution at the same time
         latch.countDown();
 
         for (Thread thread : threads) {
@@ -114,12 +116,8 @@ class ReentrantEntityLockerTest {
 
         long beginTime = System.currentTimeMillis();
 
-        List<Thread> threads = Stream.generate(() -> new Thread(threadRunnable))
-                                     .limit(THREAD_LIMIT)
-                                     .peek(Thread::start)
-                                     .collect(Collectors.toList());
+        List<Thread> threads = createThreads(threadRunnable);
 
-        //Starting lockAndRun execution at the same time
         latch.countDown();
 
         for (Thread thread : threads) {
@@ -165,10 +163,7 @@ class ReentrantEntityLockerTest {
         //Starting lockAndRun execution at the same time
         latch.countDown();
 
-        List<Thread> threads = Stream.generate(() -> new Thread(threadRunnable))
-                                     .limit(THREAD_LIMIT)
-                                     .peek(Thread::start)
-                                     .collect(Collectors.toList());
+        List<Thread> threads = createThreads(threadRunnable);
 
         //Starting lockAndRun execution at the same time
         latch.countDown();
@@ -217,10 +212,7 @@ class ReentrantEntityLockerTest {
 
         latch.countDown();
 
-        List<Thread> threads = Stream.generate(() -> new Thread(threadRunnable))
-                                     .limit(THREAD_LIMIT)
-                                     .peek(Thread::start)
-                                     .collect(Collectors.toList());
+        List<Thread> threads = createThreads(threadRunnable);
 
         latch.countDown();
 
@@ -253,10 +245,7 @@ class ReentrantEntityLockerTest {
             }
         };
 
-        List<Thread> threads = Stream.generate(() -> new Thread(threadRunnable))
-                                     .limit(THREAD_LIMIT)
-                                     .peek(Thread::start)
-                                     .collect(Collectors.toList());
+        List<Thread> threads = createThreads(threadRunnable);
 
         //Starting execution at the same time
         latch.countDown();

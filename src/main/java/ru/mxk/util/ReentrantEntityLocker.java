@@ -78,6 +78,11 @@ public class ReentrantEntityLocker<T> implements EntityLocker<T> {
     }
 
     private ReentrantLock getEntityLock(T entityId) {
+        pushEntityToThreadStack(entityId);
+        return lockByEntityID.computeIfAbsent(entityId, t -> new ReentrantLock());
+    }
+
+    private void pushEntityToThreadStack(T entityId) {
         Stack<T> threadEntityStack = lockedEntitiesByThread.computeIfAbsent(Thread.currentThread(), thread -> new Stack<>());
 
         boolean threadEntityStackIsNotEmpty = !threadEntityStack.isEmpty();
@@ -88,8 +93,6 @@ public class ReentrantEntityLocker<T> implements EntityLocker<T> {
         if (threadEntityStackIsNotEmpty && !Objects.equals(previousEntityId, entityId)) {
             throw new DeadLockPreventException("Trying to take nested non-reentrant lock: " + threadEntityStack, threadEntityStack);
         }
-
-        return lockByEntityID.computeIfAbsent(entityId, t -> new ReentrantLock());
     }
 
     private ReadWriteLock getCleanUpLock(T entityId) {
@@ -98,10 +101,10 @@ public class ReentrantEntityLocker<T> implements EntityLocker<T> {
     }
 
     private void cleanUp(T entityId, ReentrantLock entityLock) {
-        final boolean reentrantMode = cleanUpThreadEntities();
-        final boolean hasWaiters = entityLock != null && entityLock.getQueueLength() > 0;
+        final boolean reentrantMode = cleanUpThreadEntityStackAndGetReentrantMode();
+        final boolean entityLockHasWaiters = entityLock != null && entityLock.getQueueLength() > 0;
 
-        if (hasWaiters || reentrantMode) {
+        if (entityLockHasWaiters || reentrantMode) {
             return;
         }
 
@@ -114,10 +117,7 @@ public class ReentrantEntityLocker<T> implements EntityLocker<T> {
         }
     }
 
-    /**
-     * @return true if entity locker is in reentrant mode
-     */
-    private boolean cleanUpThreadEntities() {
+    private boolean cleanUpThreadEntityStackAndGetReentrantMode() {
         Stack<T> threadEntityStack = lockedEntitiesByThread.get(Thread.currentThread());
         threadEntityStack.pop();
 

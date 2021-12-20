@@ -2,6 +2,7 @@ package ru.mxk.util;
 
 
 import com.sun.istack.internal.NotNull;
+import com.sun.istack.internal.Nullable;
 
 import java.time.Duration;
 import java.util.List;
@@ -26,7 +27,7 @@ public class ReentrantEntityLocker<T> implements EntityLocker<T> {
     /**
      * Entity and support locks
      */
-    private final Map<T, ReentrantLock> lockByEntityID = new ConcurrentHashMap<>();
+    private final Map<T, Lock> lockByEntityID = new ConcurrentHashMap<>();
     private final Map<Thread, Stack<T>> lockedEntitiesByThread = new ConcurrentHashMap<>();
     private final List<ReadWriteLock> cleanUpLocks = Stream.generate(ReentrantReadWriteLock::new)
                                                            .limit(CLEANUP_LOCKS_SIZE)
@@ -34,54 +35,53 @@ public class ReentrantEntityLocker<T> implements EntityLocker<T> {
 
     @Override
     public void lockAndRun(@NotNull T entityId, @NotNull Runnable runnable) {
-        ReentrantLock entityLock = null;
-        final Lock cleanUpReadLock = getCleanUpLock(entityId).readLock();
-
-        try {
-            cleanUpReadLock.lock();
-            entityLock = getEntityLock(entityId);
-            entityLock.lock();
-
-            runnable.run();
-        } finally {
-            if (entityLock != null) {
-                entityLock.unlock();
-            }
-
-            cleanUpReadLock.unlock();
-            cleanUp(entityId, entityLock);
-        }
+        runExclusiveUnderCleanUpLock(entityId, runnable, null);
     }
 
     @Override
-    public boolean lockAndRun(@NotNull T entityId, @NotNull Runnable runnable, @NotNull Duration duration)
-            throws InterruptedException {
+    public boolean lockAndRun(@NotNull T entityId, @NotNull Runnable runnable, @NotNull Duration duration) {
+        return runExclusiveUnderCleanUpLock(entityId, runnable, duration);
+    }
 
-        ReentrantLock entityLock = null;
-        boolean locked = false;
+    private boolean runExclusiveUnderCleanUpLock(@NotNull T entityId, @NotNull Runnable runnable, @Nullable Duration duration) {
         final Lock cleanUpReadLock = getCleanUpLock(entityId).readLock();
+        boolean locked = false;
 
         try {
             cleanUpReadLock.lock();
-            entityLock = getEntityLock(entityId);
+            final Lock entityLock = getEntityLock(entityId);
 
-            if (entityLock.tryLock(duration.toNanos(), TimeUnit.NANOSECONDS)) {
-                locked = true;
-                runnable.run();
+            try {
+                if (duration == null) {
+                    entityLock.lock();
+                    locked = true;
+                } else {
+                    locked = entityLock.tryLock(duration.toNanos(), TimeUnit.NANOSECONDS);
+                }
+
+                if (locked) {
+                    runnable.run();
+                }
+            } catch (InterruptedException e) {
+                throw new InterruptedEntityLockRuntimeException();
+            } finally {
+                if (locked) {
+                    entityLock.unlock();
+                }
             }
         } finally {
-            if (locked) {
-                entityLock.unlock();
-            }
-
             cleanUpReadLock.unlock();
-            cleanUp(entityId, entityLock);
+        }
+
+        final boolean reentrantMode = cleanUpThreadEntitiesAndGetReentrantMode();
+        if (locked && !reentrantMode) {
+            cleanUp(entityId);
         }
 
         return locked;
     }
 
-    private ReentrantLock getEntityLock(T entityId) {
+    private Lock getEntityLock(T entityId) {
         pushEntityToThreadStack(entityId);
         return lockByEntityID.computeIfAbsent(entityId, t -> new ReentrantLock());
     }
@@ -91,14 +91,7 @@ public class ReentrantEntityLocker<T> implements EntityLocker<T> {
         return cleanUpLocks.get(lockIndex);
     }
 
-    private void cleanUp(T entityId, ReentrantLock entityLock) {
-        final boolean reentrantMode = cleanUpThreadEntityStackAndGetReentrantMode();
-        final boolean entityLockHasWaiters = entityLock != null && entityLock.getQueueLength() > 0;
-
-        if (entityLockHasWaiters || reentrantMode) {
-            return;
-        }
-
+    private void cleanUp(T entityId) {
         final Lock cleanUpWriteLock = getCleanUpLock(entityId).writeLock();
         try {
             cleanUpWriteLock.lock();
@@ -108,11 +101,11 @@ public class ReentrantEntityLocker<T> implements EntityLocker<T> {
         }
     }
 
-    private boolean cleanUpThreadEntityStackAndGetReentrantMode() {
-        Stack<T> threadEntityStack = lockedEntitiesByThread.get(Thread.currentThread());
-        threadEntityStack.pop();
+    private boolean cleanUpThreadEntitiesAndGetReentrantMode() {
+        final Stack<T> threadEntities = lockedEntitiesByThread.get(Thread.currentThread());
+        threadEntities.pop();
 
-        if (threadEntityStack.isEmpty()) {
+        if (threadEntities.isEmpty()) {
             lockedEntitiesByThread.remove(Thread.currentThread());
             return false;
         }
@@ -121,16 +114,15 @@ public class ReentrantEntityLocker<T> implements EntityLocker<T> {
     }
 
     private void pushEntityToThreadStack(T entityId) {
-        Stack<T> threadEntityStack = lockedEntitiesByThread.computeIfAbsent(Thread.currentThread(), thread -> new Stack<>());
+        final Stack<T> threadEntities =
+                lockedEntitiesByThread.computeIfAbsent(Thread.currentThread(), thread -> new Stack<>());
+        final boolean isNotFirstEntity = !threadEntities.isEmpty();
+        final T previousEntityId = isNotFirstEntity ? threadEntities.peek() : null;
 
-        boolean threadEntityStackIsNotEmpty = !threadEntityStack.isEmpty();
-        T previousEntityId = threadEntityStackIsNotEmpty ? threadEntityStack.peek() : null;
+        threadEntities.push(entityId);
 
-        threadEntityStack.push(entityId);
-
-        if (threadEntityStackIsNotEmpty && !Objects.equals(previousEntityId, entityId)) {
-            throw new DeadLockPreventException("Trying to take nested non-reentrant lock: " + threadEntityStack, threadEntityStack);
+        if (isNotFirstEntity && !Objects.equals(previousEntityId, entityId)) {
+            throw new DeadLockPreventException("Trying to take nested non-reentrant lock: " + threadEntities, threadEntities);
         }
     }
-
 }

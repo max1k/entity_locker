@@ -37,7 +37,7 @@ class ReentrantEntityLockerTest {
     public void testAtMostOneExecutionOnSameEntity() throws InterruptedException {
         CountDownLatch latch = new CountDownLatch(1);
         List<Integer> mutualList = new ArrayList<>(THREAD_LIMIT);
-        EntityLocker<Integer> entityLocker = new ReentrantEntityLocker<>();
+        ReentrantEntityLocker<Integer> entityLocker = new ReentrantEntityLocker<>();
 
         Runnable threadRunnable = () -> {
             try {
@@ -56,6 +56,7 @@ class ReentrantEntityLockerTest {
             thread.join();
         }
 
+        Assertions.assertTrue(entityLocker.isClean());
         Assertions.assertEquals(EXPECTED_LIST, mutualList);
     }
 
@@ -64,7 +65,7 @@ class ReentrantEntityLockerTest {
         CountDownLatch latch = new CountDownLatch(1);
         List<Integer> firstMutualList = new ArrayList<>(THREAD_LIMIT);
         List<Integer> secondMutualList = new ArrayList<>(THREAD_LIMIT);
-        EntityLocker<Integer> entityLocker = new ReentrantEntityLocker<>();
+        ReentrantEntityLocker<Integer> entityLocker = new ReentrantEntityLocker<>();
 
         Runnable threadRunnable = () -> {
             try {
@@ -88,6 +89,7 @@ class ReentrantEntityLockerTest {
             thread.join();
         }
 
+        Assertions.assertTrue(entityLocker.isClean());
         Assertions.assertEquals(EXPECTED_LIST, firstMutualList);
         Assertions.assertEquals(EXPECTED_LIST, secondMutualList);
     }
@@ -127,6 +129,7 @@ class ReentrantEntityLockerTest {
         long endTime = System.currentTimeMillis();
         Duration runDuration = Duration.ofMillis(endTime - beginTime);
 
+        Assertions.assertTrue(((ReentrantEntityLocker<?>)entityLocker).isClean());
         Assertions.assertEquals(THREAD_LIMIT, counter.get());
         Assertions.assertTrue(runDuration.compareTo(Duration.ofMillis(DEFAULT_SLEEP_TIME_MS)) >= 0);
         Assertions.assertTrue(runDuration.compareTo(Duration.ofMillis(THREAD_LIMIT * DEFAULT_SLEEP_TIME_MS)) < 0);
@@ -137,7 +140,7 @@ class ReentrantEntityLockerTest {
         CountDownLatch latch = new CountDownLatch(1);
         AtomicInteger counter = new AtomicInteger(0);
         List<Boolean> protectedCodeExecutions = new CopyOnWriteArrayList<>();
-        EntityLocker<Integer> entityLocker = new ReentrantEntityLocker<>();
+        ReentrantEntityLocker<Integer> entityLocker = new ReentrantEntityLocker<>();
 
         Runnable threadRunnable = () -> {
             try {
@@ -172,6 +175,7 @@ class ReentrantEntityLockerTest {
             thread.join();
         }
 
+        Assertions.assertTrue(entityLocker.isClean());
         Assertions.assertEquals(1, counter.get());
         Assertions.assertEquals(THREAD_LIMIT, protectedCodeExecutions.size());
 
@@ -187,7 +191,7 @@ class ReentrantEntityLockerTest {
         CountDownLatch latch = new CountDownLatch(1);
         AtomicInteger counter = new AtomicInteger(0);
         List<Boolean> protectedCodeExecutions = new CopyOnWriteArrayList<>();
-        EntityLocker<Integer> entityLocker = new ReentrantEntityLocker<>();
+        ReentrantEntityLocker<Integer> entityLocker = new ReentrantEntityLocker<>();
 
         Runnable threadRunnable = () -> {
             try {
@@ -220,6 +224,7 @@ class ReentrantEntityLockerTest {
             thread.join();
         }
 
+        Assertions.assertTrue(entityLocker.isClean());
         Assertions.assertEquals(2, counter.get());
         Assertions.assertEquals(THREAD_LIMIT, protectedCodeExecutions.size());
 
@@ -259,7 +264,7 @@ class ReentrantEntityLockerTest {
 
     @Test
     public void testDeadLock() throws InterruptedException {
-        EntityLocker<Integer> entityLocker = new ReentrantEntityLocker<>();
+        ReentrantEntityLocker<Integer> entityLocker = new ReentrantEntityLocker<>();
         AtomicInteger counter = new AtomicInteger(0);
         CountDownLatch latch = new CountDownLatch(1);
 
@@ -300,6 +305,8 @@ class ReentrantEntityLockerTest {
         for (Thread thread : threads) {
             thread.join();
         }
+
+        Assertions.assertTrue(entityLocker.isClean());
     }
 
 }

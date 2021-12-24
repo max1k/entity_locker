@@ -18,6 +18,12 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+/**
+ * Reentrant implementation of {@link EntityLocker}.
+ * Allows take nested locks on a same entity and prevent deadlocks by throwing {@link DeadLockPreventException}
+ * in case of taking nested locks on different entities.
+ * @param <T> Type of entities that EntityLocker works with.
+ */
 public class ReentrantEntityLocker<T> implements EntityLocker<T> {
     /**
      * Count of locks for cleanup. Should be a power of two.
@@ -35,76 +41,55 @@ public class ReentrantEntityLocker<T> implements EntityLocker<T> {
 
     @Override
     public void lockAndRun(@NotNull T entityId, @NotNull Runnable runnable) {
-        runExclusiveUnderCleanUpLock(entityId, runnable, null);
+        runExclusive(entityId, runnable, null);
     }
 
     @Override
     public boolean lockAndRun(@NotNull T entityId, @NotNull Runnable runnable, @NotNull Duration duration) {
-        return runExclusiveUnderCleanUpLock(entityId, runnable, duration);
+        return runExclusive(entityId, runnable, duration);
     }
 
-    private boolean runExclusiveUnderCleanUpLock(@NotNull T entityId, @NotNull Runnable runnable, @Nullable Duration duration) {
-        boolean entityLocked = false,
-                cleanupLocked = false,
-                deadlockOccurred = false;
-
+    private boolean runExclusive(@NotNull T entityId, @NotNull Runnable runnable, @Nullable Duration duration) {
         try {
             pushEntityToThreadStack(entityId);
-            getCleanUpLock(entityId).readLock().lock();
-            cleanupLocked = true;
-
-            entityLocked = runExclusive(entityId, runnable, duration);
-        } catch (DeadLockPreventException deadLockPreventException) {
-            if (deadLockPreventException.getLocker() == this && getCurrentThreadLockedEntities().size() == 1) {
-                deadlockOccurred = true;
-            }
-            throw deadLockPreventException;
+            return runWithCleanupWrapper(entityId, runnable, duration);
         } finally {
-            if (cleanupLocked) {
-                getCleanUpLock(entityId).readLock().unlock();
-            }
-
-            if (deadlockOccurred) {
-                //cleanup on a first level in case of deadlock prevention
-                getCurrentThreadLockedEntities().forEach(this::cleanUp);
-                lockedEntitiesByThread.remove(Thread.currentThread());
-            } else {
-                final boolean reentrantMode;
-                reentrantMode = cleanUpThreadEntitiesAndGetReentrantMode();
-
-                if (entityLocked && !reentrantMode) {
-                    cleanUp(entityId);
-                }
+            if (!cleanUpThreadEntitiesAndGetReentrantMode()) {
+                cleanupEntityLock(entityId);
             }
         }
-
-        return entityLocked;
     }
 
-    private boolean runExclusive(T entityId, Runnable runnable, Duration duration) {
-        boolean entityLocked = false;
+    private boolean runWithCleanupWrapper(T entityId, Runnable runnable, Duration duration) {
+        final Lock cleanupReadLock = getCleanUpLock(entityId).readLock();
+
+        cleanupReadLock.lock();
+        try {
+            return runWithEntityLockWrapper(entityId, runnable, duration);
+        } catch (InterruptedException e) {
+            throw new InterruptedEntityLockRuntimeException(e);
+        } finally {
+            cleanupReadLock.unlock();
+        }
+    }
+
+    private boolean runWithEntityLockWrapper(T entityId, Runnable runnable, Duration duration) throws InterruptedException {
         final Lock entityLock = getEntityLock(entityId);
 
-        try {
-            if (duration == null) {
-                entityLock.lock();
-                entityLocked = true;
-            } else {
-                entityLocked = entityLock.tryLock(duration.toNanos(), TimeUnit.NANOSECONDS);
-            }
-
-            if (entityLocked) {
-                runnable.run();
-            }
-        } catch (InterruptedException e) {
-            throw new InterruptedEntityLockRuntimeException();
-        }  finally {
-            if (entityLocked) {
-                entityLock.unlock();
+        if (duration == null) {
+            entityLock.lock();
+        } else {
+            if (!entityLock.tryLock(duration.toNanos(), TimeUnit.NANOSECONDS)) {
+                return false;
             }
         }
 
-        return entityLocked;
+        try {
+            runnable.run();
+            return true;
+        } finally {
+            entityLock.unlock();
+        }
     }
 
     private Lock getEntityLock(T entityId) {
@@ -116,10 +101,11 @@ public class ReentrantEntityLocker<T> implements EntityLocker<T> {
         return cleanUpLocks.get(lockIndex);
     }
 
-    private void cleanUp(T entityId) {
+    private void cleanupEntityLock(T entityId) {
         final Lock cleanUpWriteLock = getCleanUpLock(entityId).writeLock();
+
+        cleanUpWriteLock.lock();
         try {
-            cleanUpWriteLock.lock();
             lockByEntityID.remove(entityId);
         } finally {
             cleanUpWriteLock.unlock();
@@ -147,7 +133,7 @@ public class ReentrantEntityLocker<T> implements EntityLocker<T> {
         threadEntities.push(entityId);
 
         if (isNotFirstEntity && !Objects.equals(previousEntityId, entityId)) {
-            throw new DeadLockPreventException("Trying to take nested non-reentrant lock: " + threadEntities, this);
+            throw new DeadLockPreventException("Trying to take nested non-reentrant lock: " + threadEntities);
         }
     }
 

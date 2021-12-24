@@ -1,9 +1,8 @@
 package ru.mxk.util;
 
 
-import com.sun.istack.internal.NotNull;
-import com.sun.istack.internal.Nullable;
-
+import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -40,16 +39,16 @@ public class ReentrantEntityLocker<T> implements EntityLocker<T> {
                                                            .collect(Collectors.toList());
 
     @Override
-    public void lockAndRun(@NotNull T entityId, @NotNull Runnable runnable) {
+    public void lockAndRun(@Nonnull T entityId, @Nonnull Runnable runnable) {
         runExclusive(entityId, runnable, null);
     }
 
     @Override
-    public boolean lockAndRun(@NotNull T entityId, @NotNull Runnable runnable, @NotNull Duration duration) {
+    public boolean lockAndRun(@Nonnull T entityId, @Nonnull Runnable runnable, @Nonnull Duration duration) {
         return runExclusive(entityId, runnable, duration);
     }
 
-    private boolean runExclusive(@NotNull T entityId, @NotNull Runnable runnable, @Nullable Duration duration) {
+    private boolean runExclusive(@Nonnull T entityId, @Nonnull Runnable runnable, @Nullable Duration duration) {
         try {
             pushEntityToThreadStack(entityId);
             return runWithCleanupWrapper(entityId, runnable, duration);

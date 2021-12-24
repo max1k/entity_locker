@@ -1,7 +1,8 @@
 package ru.mxk.util;
 
-import com.sun.istack.internal.NotNull;
 
+
+import javax.annotation.Nonnull;
 import java.time.Duration;
 
 /**
@@ -25,7 +26,7 @@ public interface EntityLocker<T> {
      * @param entityId ID of entity to lock with.
      * @param runnable code to run when lock is taken.
      */
-    void lockAndRun(@NotNull T entityId, @NotNull Runnable runnable);
+    void lockAndRun(@Nonnull T entityId, @Nonnull Runnable runnable);
 
     /**
      * Executing runnable if lock by provided entityId is not held and returning {@code true}.
@@ -37,7 +38,7 @@ public interface EntityLocker<T> {
      * @param runnable code to run when lock is taken.
      * @param timeout the time to wait for the lock
      */
-    boolean lockAndRun(@NotNull T entityId, @NotNull Runnable runnable, @NotNull Duration timeout)
+    boolean lockAndRun(@Nonnull T entityId, @Nonnull Runnable runnable, @Nonnull Duration timeout)
             throws InterruptedException;
 
     /**

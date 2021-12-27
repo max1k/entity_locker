@@ -37,7 +37,7 @@ class ReentrantEntityLockerTest {
     public void testAtMostOneExecutionOnSameEntity() throws InterruptedException {
         CountDownLatch latch = new CountDownLatch(1);
         List<Integer> mutualList = new ArrayList<>(THREAD_LIMIT);
-        ReentrantEntityLocker<Integer> entityLocker = new ReentrantEntityLocker<>();
+        EntityLocker<Integer> entityLocker = new ReentrantEntityLocker<>();
 
         Runnable threadRunnable = () -> {
             try {
@@ -56,7 +56,7 @@ class ReentrantEntityLockerTest {
             thread.join();
         }
 
-        Assertions.assertTrue(entityLocker.isClean());
+        Assertions.assertTrue(((ReentrantEntityLocker<?>)entityLocker).isClean());
         Assertions.assertEquals(EXPECTED_LIST, mutualList);
     }
 
@@ -65,7 +65,7 @@ class ReentrantEntityLockerTest {
         CountDownLatch latch = new CountDownLatch(1);
         List<Integer> firstMutualList = new ArrayList<>(THREAD_LIMIT);
         List<Integer> secondMutualList = new ArrayList<>(THREAD_LIMIT);
-        ReentrantEntityLocker<Integer> entityLocker = new ReentrantEntityLocker<>();
+        EntityLocker<Integer> entityLocker = new ReentrantEntityLocker<>();
 
         Runnable threadRunnable = () -> {
             try {
@@ -89,7 +89,7 @@ class ReentrantEntityLockerTest {
             thread.join();
         }
 
-        Assertions.assertTrue(entityLocker.isClean());
+        Assertions.assertTrue(((ReentrantEntityLocker<?>)entityLocker).isClean());
         Assertions.assertEquals(EXPECTED_LIST, firstMutualList);
         Assertions.assertEquals(EXPECTED_LIST, secondMutualList);
     }
@@ -140,7 +140,7 @@ class ReentrantEntityLockerTest {
         CountDownLatch latch = new CountDownLatch(1);
         AtomicInteger counter = new AtomicInteger(0);
         List<Boolean> protectedCodeExecutions = new CopyOnWriteArrayList<>();
-        ReentrantEntityLocker<Integer> entityLocker = new ReentrantEntityLocker<>();
+        EntityLocker<Integer> entityLocker = new ReentrantEntityLocker<>();
 
         Runnable threadRunnable = () -> {
             try {
@@ -175,7 +175,7 @@ class ReentrantEntityLockerTest {
             thread.join();
         }
 
-        Assertions.assertTrue(entityLocker.isClean());
+        Assertions.assertTrue(((ReentrantEntityLocker<?>)entityLocker).isClean());
         Assertions.assertEquals(1, counter.get());
         Assertions.assertEquals(THREAD_LIMIT, protectedCodeExecutions.size());
 
@@ -191,7 +191,7 @@ class ReentrantEntityLockerTest {
         CountDownLatch latch = new CountDownLatch(1);
         AtomicInteger counter = new AtomicInteger(0);
         List<Boolean> protectedCodeExecutions = new CopyOnWriteArrayList<>();
-        ReentrantEntityLocker<Integer> entityLocker = new ReentrantEntityLocker<>();
+        EntityLocker<Integer> entityLocker = new ReentrantEntityLocker<>();
 
         Runnable threadRunnable = () -> {
             try {
@@ -224,7 +224,7 @@ class ReentrantEntityLockerTest {
             thread.join();
         }
 
-        Assertions.assertTrue(entityLocker.isClean());
+        Assertions.assertTrue(((ReentrantEntityLocker<?>)entityLocker).isClean());
         Assertions.assertEquals(2, counter.get());
         Assertions.assertEquals(THREAD_LIMIT, protectedCodeExecutions.size());
 
@@ -264,7 +264,7 @@ class ReentrantEntityLockerTest {
 
     @Test
     public void testDeadLock() throws InterruptedException {
-        ReentrantEntityLocker<Integer> entityLocker = new ReentrantEntityLocker<>();
+        EntityLocker<Integer> entityLocker = new ReentrantEntityLocker<>();
         AtomicInteger counter = new AtomicInteger(0);
         CountDownLatch latch = new CountDownLatch(1);
 
@@ -306,7 +306,7 @@ class ReentrantEntityLockerTest {
             thread.join();
         }
 
-        Assertions.assertTrue(entityLocker.isClean());
+        Assertions.assertTrue(((ReentrantEntityLocker<?>)entityLocker).isClean());
     }
 
 }

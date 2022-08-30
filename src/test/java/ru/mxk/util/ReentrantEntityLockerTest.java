@@ -105,11 +105,7 @@ class ReentrantEntityLockerTest {
                 latch.await();
                 entityLocker.lockAndRun(UUID.randomUUID(), () -> {
                     counter.incrementAndGet();
-                    try {
-                        Thread.sleep(DEFAULT_SLEEP_TIME_MS);
-                    } catch (InterruptedException e) {
-                        Assertions.fail(e);
-                    }
+                    sleep(DEFAULT_SLEEP_TIME_MS);
                 });
             } catch (InterruptedException e) {
                 Assertions.fail(e);
@@ -149,11 +145,7 @@ class ReentrantEntityLockerTest {
                         FIRST_ENTITY_ID,
                         () -> {
                             counter.incrementAndGet();
-                            try {
-                                Thread.sleep(DEFAULT_SLEEP_TIME_MS);
-                            } catch (InterruptedException e) {
-                                Assertions.fail(e);
-                            }
+                            sleep(DEFAULT_SLEEP_TIME_MS);
                         },
                         Duration.ofMillis(DEFAULT_SLEEP_TIME_MS / 2)
                 );
@@ -200,13 +192,9 @@ class ReentrantEntityLockerTest {
                         FIRST_ENTITY_ID,
                         () -> {
                             counter.incrementAndGet();
-                            try {
-                                Thread.sleep(DEFAULT_SLEEP_TIME_MS);
-                            } catch (InterruptedException e) {
-                                Assertions.fail(e);
-                            }
+                            sleep(DEFAULT_SLEEP_TIME_MS * 3 / 2);
                         },
-                        Duration.ofMillis(DEFAULT_SLEEP_TIME_MS * 3 / 2)
+                        Duration.ofMillis(DEFAULT_SLEEP_TIME_MS)
                 );
                 protectedCodeExecutions.add(executed);
             } catch (InterruptedException e) {
@@ -225,14 +213,22 @@ class ReentrantEntityLockerTest {
         }
 
         Assertions.assertTrue(((ReentrantEntityLocker<?>)entityLocker).isClean());
-        Assertions.assertEquals(2, counter.get());
+        Assertions.assertEquals(1, counter.get());
         Assertions.assertEquals(THREAD_LIMIT, protectedCodeExecutions.size());
 
         Map<Boolean, Long> executionsCount = protectedCodeExecutions
                 .stream()
                 .collect(Collectors.groupingBy(Function.identity(), Collectors.counting()));
 
-        Assertions.assertEquals(2, executionsCount.get(true));
+        Assertions.assertEquals(1, executionsCount.get(true));
+    }
+
+    private static void sleep(long millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException e) {
+            Assertions.fail(e);
+        }
     }
 
     @Test
